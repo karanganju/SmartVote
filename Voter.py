@@ -5,12 +5,13 @@ import random
 import OpenSSL
 import pyelliptic
 import numpy as np
-
+import Crypto.Random.random as Rand
 
 # Shuffled votes are not signed at this point - Needs to be done
 
 def generate_nonce(length=8):
-    return ''.join([str(random.randint(0, 9)) for i in range(length)])
+    return ''.join([str(Rand.randint(0, 9)) for i in range(length)])
+
 
 # This contains the list of al voters for communication.
 # In a real scenario, the contract should have the 
@@ -66,7 +67,7 @@ class Voter:
 		self.shuffled_votes = [self.key.decrypt(x) for x in self.shuffled_votes]
 		self.shuffled_votes.append(round_ciphertext)
 		# Randomize array elements
-		self.shuffled_votes = np.random.permutation(self.shuffled_votes)
+		Rand.shuffle(self.shuffled_votes)
 		if (self.hub_id == 0):
 			hub_votes = ""
 			for elem in self.shuffled_votes:
@@ -83,7 +84,7 @@ class Voter:
 
 		self.shuffled_hashes.append(round_ciphertext)
 		# Randomize array elements
-		self.shuffled_hashes = np.random.permutation(self.shuffled_hashes).tolist()
+		Rand.shuffle(self.shuffled_hashes)
 		# print self.shuffled_hashes
 		if (self.hub_id == 0):
 			hub_votes = ""
@@ -93,7 +94,13 @@ class Voter:
 		else:
 			self.send_shuffled_hash(Election.participants[(self.hub_num, self.hub_id - 1)])
 
-	# def sign_shuffling()
+	def sign_shuffling(self, shuffled_hashes):
+		for elem in shuffled_hashes:
+			signed_hash = elem
+			for i in range(self.hub_id):
+				signed_hash = self.key.encrypt(round_ciphertext, Election.keys[(self.hub_num, i)])
+
+		print "Vote has not been found!"	
 
 
 
