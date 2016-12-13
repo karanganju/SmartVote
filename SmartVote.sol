@@ -2,6 +2,24 @@ pragma solidity ^0.4.2;
 
 contract SmartVote {
 
+
+	function bytes32ToString(bytes32 x) constant returns (string) {
+	    bytes memory bytesString = new bytes(32);
+	    uint charCount = 0;
+	    for (uint j = 0; j < 32; j++) {
+	        byte char = byte(bytes32(uint(x) * 2 ** (8 * j)));
+	        if (char != 0) {
+	            bytesString[charCount] = char;
+	            charCount++;
+	        }
+	    }
+	    bytes memory bytesStringTrimmed = new bytes(charCount);
+	    for (j = 0; j < charCount; j++) {
+	        bytesStringTrimmed[j] = bytesString[j];
+	    }
+	    return string(bytesStringTrimmed);
+	}
+
 	enum VotePhase {Uninitialized, Joining, Secret, Open, Tallied, Terminated}
 
 	// Store information about voter for reference
@@ -42,6 +60,8 @@ contract SmartVote {
 	_vote[] votes;
 	mapping(bytes => uint) vote_id;
 
+	mapping(byte => uint) ascii;
+
 	// Election metadata
 	address public organizer;
 	string public desc;
@@ -58,8 +78,12 @@ contract SmartVote {
 	uint lottery_cut;
 	uint random;
 
+	mapping(bytes => int) counts;
+
 	event print_str(string inp);
 	event print_int(uint inp);
+	event print_bytes(bytes inp);
+	event print_bytes32(bytes32 inp);
 	event print_byte(byte inp);
 
 	// Initialize variables
@@ -72,6 +96,22 @@ contract SmartVote {
 		num_hubs = 0;
 		random = 0;
 		phase = VotePhase.Uninitialized;
+		ascii['f'] = 15;
+		ascii['e'] = 14;
+		ascii['d'] = 13;
+		ascii['c'] = 12;
+		ascii['b'] = 11;
+		ascii['a'] = 10;
+		ascii['9'] = 9;
+		ascii['8'] = 8;
+		ascii['7'] = 7;
+		ascii['6'] = 6;
+		ascii['5'] = 5;
+		ascii['4'] = 4;
+		ascii['3'] = 3;
+		ascii['2'] = 2;
+		ascii['1'] = 1;
+		ascii['0'] = 0;
 	}
 
 	// Set election-defined variables. These can be varied as per type of election.
@@ -97,6 +137,12 @@ contract SmartVote {
 		else throw;
 	}
 
+	function get_phase_and_check_hash(bytes hash) returns (uint) {
+		if (msg.sender != organizer) throw;
+		if (phase == VotePhase.Secret && vote_id[hash] != 0) return 1;
+		else return 0;
+	}
+
 	// Allocate hub and hub_id to voter - Cannot be called from outside hence smart contract data is pristine
 	function alloc_hub(address _voter_add) private returns (uint, uint) {
 		if(hubs[num_hubs].size == hub_max_size) {
@@ -105,6 +151,19 @@ contract SmartVote {
 		uint num_voter = hubs[num_hubs].size++;
 		hubs[num_hubs].voters[num_voter] = _voter_add;
 		return (num_hubs, num_voter);
+	}
+
+	function check_hash(bytes hash, bytes nonce, bytes choice) private {
+		bytes memory concat_vote = new bytes(nonce.length + choice.length);
+		uint i;
+		for(i = 0;i<nonce.length;i++) concat_vote[i] = nonce[i];
+		for(;i<nonce.length + choice.length;i++) concat_vote[i] = choice[i - nonce.length];
+		
+		bytes32 calc_hash = sha3(concat_vote);
+		
+		for(uint j = 0;j<32;j++) {
+			if (uint(calc_hash[j]) != ascii[hash[2*j]]*16 + ascii[hash[2*j + 1]]) throw;
+		}
 	}
 
 	function toUint(bytes inp) returns (uint) {
@@ -209,6 +268,7 @@ contract SmartVote {
 				if (vote_id[vote_hash] == 0) throw;
 				uint voter_num = vote_id[vote_hash] - 1; 
 				if (votes[voter_num].hub_num != hub_num) throw;
+				check_hash(vote_hash, vote_nonce, choice);
 				last = i+1;
 				count += 1;
 			}
@@ -258,17 +318,24 @@ contract SmartVote {
 		}	
 	}
  
-	function remove_invalid_votes() {
-		// Send to TRUSTED HARDWARE = PWNAGE!
+	function send_revotes_and_tally(bytes choices, int[] tallies) returns (bytes) {
+		if (phase != VotePhase.Open) throw;
+		uint j = 0;
+		uint last = 0;
+		for(uint i=0;i<choices.length;i++) if(choices[i] == '|') {
+			bytes memory choice = new bytes(i-last);
+			for(uint k = last;k<i;k++) choice[k-last]=choices[k];
+			counts[choice] += tallies[j];
+			j++;
+			last = i+1;
+		}
+		return tally();
 	}
 
 	// Count votes
-	function tally() returns (bytes) {
-		if (phase != VotePhase.Open) throw;
-		mapping(bytes => uint) counts;
-		// THIS IS IT! ITS THE DAY YOU'VE ALL BEEN WAITING FOR!
+	function tally() private returns (bytes) {
 		bytes max_choice = votes[0].choice;
-		uint max_votes = 0;
+		int max_votes = 0;
 		for(uint i = 0; i < votes.length; i++) if(votes[i].choice.length != 0) {
 			counts[votes[i].choice]++;
 			if (counts[votes[i].choice] > max_votes) {

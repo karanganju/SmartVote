@@ -2,6 +2,7 @@ from ethereum import utils
 import hashlib
 import pyelliptic
 import Crypto.Random.random as Rand
+from sets import Set
 
 
 def generate_nonce(length=8):
@@ -19,7 +20,48 @@ class Election:
 	participants = {}
 	# Link from hub_num and hub_id to voter key (the only public data about the voters)
 	keys = {}
-		
+	# Deleted Votes
+	del_votes = Set([])
+	# Added Votes
+	added_votes = Set([])
+	# Tally map
+	tallies = {}
+
+# We check if the contract has the hash corresponding to the old vote. That's fine for the implementation but it is VERY wrong.
+# Any coercer listening on the network can see this function call and detect that the voter is revoting.
+# Instead we should download all hashes and check locally.
+def send_revote(old_vote, new_vote, contract, organizer):
+	if (old_vote.check_hash() and new_vote.check_hash()):
+		if (old_vote not in Election.del_votes):
+			if (old_vote in Election.added_votes or (contract.get_phase_and_check_hash(""+old_vote.hash, sender=organizer) == 1)):
+				Election.del_votes.add(old_vote)
+				Election.added_votes.add(new_vote)
+				print "Somebody Revoted!"
+				return 1
+	return -1
+
+
+def send_tallies(contract, organizer):
+	for vote in Election.del_votes:
+		if (vote.choice in Election.tallies.keys()):
+			Election.tallies[vote.choice] -= 1;
+		else:
+			Election.tallies[vote.choice] = -1;
+
+	for vote in Election.added_votes:
+		if (vote.choice in Election.tallies.keys()):
+			Election.tallies[vote.choice] += 1;
+		else:
+			Election.tallies[vote.choice] = 1;
+
+
+	tally_counts = []
+	choices = ""
+	for elem in Election.tallies.keys():
+		choices += elem + "|";
+		tally_counts.append(Election.tallies[elem])
+
+	return contract.send_revotes_and_tally(choices, tally_counts, sender=organizer)
 
 # Contains the nonce, choice and hash of the vote
 class Vote:
@@ -27,8 +69,7 @@ class Vote:
 		self.nonce = _nonce
 		self.choice = _choice
 		s = hashlib.sha3_256()
-		s.update(str(self.choice).encode())
-		s.update(self.nonce)
+		s.update(self.nonce+str(self.choice).encode())
 		self.hash = s.hexdigest()
 
 	def print_hash(self):
@@ -39,15 +80,24 @@ class Vote:
 		print "Voted Candidate :", self.choice
 		print "SHA3 Hash :", self.hash
 
+	def check_hash(self):
+		s = hashlib.sha3_256()
+		s.update(self.nonce+str(self.choice).encode())
+		if (s.hexdigest() == self.hash):
+			return True;
+		else:
+			return False;
+
 	def toString(self):
 		return self.hash + "|" + self.nonce + "|" + str(self.choice) + "|"
 
 class Voter:
-	def __init__(self, _name, client_id, _contract, _state):
+	def __init__(self, _name, client_id, _contract, _state, _organizer):
 		self.name = _name
 		self.id = client_id
 		self.pub_addr = utils.privtoaddr(client_id)
 		self.contract = _contract
+		self.organizer = _organizer
 		self.state = _state
 		# The hub this voter is assigned to (Hubs are used as shuffling groups)
 		self.hub_num = -1
@@ -58,6 +108,7 @@ class Voter:
 		# Used to capture shuffled commitments/votes through the shuffling phase
 		self.shuffled_hashes = []
 		self.shuffled_votes = []
+		self.new_vote = 0
 
 	# Register to be assigned a hub and broadcast your encyption details and point of contact (ip/ethereum address)
 	def register(self, election_fee):
@@ -119,5 +170,16 @@ class Voter:
 
 	def print_bal(self):
 		print self.name, "has balance :", self.state.block.get_balance(self.pub_addr)
-	# # # # 
-	# # # def revote():
+
+	# Send revote to Election Committee through anonymous means. Only final tallies are shown in the contract.
+	def revote(self, choice):
+		new_vote = Vote(generate_nonce(), choice)
+		if (self.new_vote == 0):
+			old_vote = self.vote
+		else:
+			old_vote = self.new_vote
+		if (send_revote(old_vote, new_vote, self.contract, self.organizer) == 1):
+			self.new_vote = new_vote
+			return 1;
+		else:
+			return 0
