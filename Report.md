@@ -23,9 +23,13 @@ Online voting has a lot of benefits as well as drawbacks but hopefully, with str
   * Allow for anonymous and private revoting channels which are verifiable in their functioning but do not reveal any information about the revotes apart from the final changed tallies. Note that transparency of revotes is not an option here and we have to assume a weaker model but we can still abide by the stronger model for the case where voters are not coerced.
   
 __In this project, we specifically aim to solve the following challenges in allowing voting atop of Ethereum__
+
 * __Privacy__ - Enable some form of verifiable privacy using a decentralized shuffling technique based on Coinshuffle
+
 * __Voter Incentivization__ - Increase voter turnout using lottery systems
+
 * __Accountability__ - Reduce the accountability problem in utilizing either of the two approaches 
+
 * __Coercion__ - Address voter coercion by at least enforcing the third solution which despite being the weakest still guarantees some imporovements
 
 ## Protocol description and Security Analysis
