@@ -60,6 +60,8 @@ It is very clear to see that any voter can DOS the system by not responding. Thi
 
 Also, although the previous issue only deals with DOS attempts without any real incentives, recall that in the second shuffling, during the signing phase, every voter is able to derive the total tally of the hub and might have an incentive to DOS the voting for the hub if it does not favor his candidate. For this, we could employ either retries and blacklisting techniques or ignore the signing phase for the second shuffling entirely (see the last point below).
 
+This attack is showcased in DOS_attack.py.
+
 **_Effect of Hub Size?_**
 
 There is a very apparent tradeoff between privacy and DOS resistance in changing the hub size. Too high or too low a value could be quite harmful and so one would wish to aim for a sweet spot in the middle and this could vary based on the nature of the election. For example, if the system is able to detect DOS attackers and watchdogs are efficient in monitoring network status and detecting anomalies, the hub size could be made larger to compromise on the DOS resistance to allow for better privacy guarantees. Also, hubs could be assigned randomly to mitigate against colluders.
@@ -76,26 +78,72 @@ In this technique, yes. However, there are some other alternatives to the mechan
 
 **_Is the reverse signing phase required?_**
 
-For the first round, yes. But for the second round, if we assume the voter with hub ID 0 to be a hub admin who can be held accountable, he can send the opened commitments to the 
+For the first round, yes. But for the second round, if we assume the voter with hub ID 0 to be a hub admin who can be held accountable, he can check for all the hashes and send the opened commitments to the smart contract without the need of signing. Since all votes have already been committed to, he cannot change any hashes. Also, since all communication is public and through the Ethereum network, it will be evident if he *conveniently* drops any votes. This is a better system than the one proposed as there is no risk of the incentivized DOS attack talked about in the previous sections. Unfortunately, the implementation does not check for signatures and so suffers from the trivial attack shown in exploit_no_signature_checking.py.
 
 ### Voter Incentivization
 
+For voter incentivization, we take a small amount off from the election fee and assign it as a lottery cut which is allotted to one single random voter. The issue now comes to pick a source of randomness. The parent blockhash can be used but for a large scale lottery system, miners have plenty of incentive to produce hashes which serve the purpose of getting them the lottery. However, we have an even better source of randomness. Recall that we pick up nonces from the voters at the time of opening the commitment. These nonces can be assumed as independently drawn and so almost mimic a true RNG. These nonces are xor-ed with each other and the taken modulo the number of voters to give a voter id which is selected as the lottery winner. This is a much better source of randomness if we assume that all the voters are not colluding which is a reasonable assumption.
+
+Literature was quite divided on how effective lottery systems are in improving voting. While one side claims that this increases uneducated and unaware voters and thus decreases quality of voting, the other side claims that since the effective cost of voting has decreased due to benefits received, people will spend more on gaining awareness and thus, quality will improve. Clearly, there is a need to verify these notions experimentally.
+
+The only vulnerable part in this component is either the lottery pool or the election fee that is collected. If an attacker is able to somehow find a bug in the program, he could potentially leak these funds into his/her own account (DAO). There seem to be no evident bugs in the code but a suicide function has been implemented which can only be called by the organizer and fetches all funds from the contract to the organizers account, which can then be returned to the respective voters. Note that the availability of this function is a dual-edged sword. It also means that the organizer could leak the funds before the lottery is returned or a candidate is voted. So, voters should know the organizer before allocating funds into the contract.
+
 ### Accountability
+
+As discussed previously, there are 2 ways to do this.
+* Keep a minimum election fee which is received from the voter. That makes the system follow the one coin one vote protocol and favours the rich. It is a weak system but at least is much better than not having it at all.
+* A better solution would be to have some offline registration which would then only allow a decided set of addresses to participate in the voting system.
+
+We have implemented the former although the latter can be just as easily implemented. The security analysis of this deals with leakage of election fees which has been discussed about earlier.
 
 ### Coercion
 
+As discussed previously, voter coercion is a difficult problem to solve. Many existing solutions for online voting do not even address the problem of voter coercion because of its difficulty. All the 3 methods discussed above for online voting coercion resistance require some form of a trusted third party which results in loss of transparency and verifiability. But using the smart contract is not an option because, neither can it hold a list of invalid votes secretly, nor can it generate secret nonces and encrypt the voters choice privately and it definitely cannot store a set of revotes in any form of private memory. Hence, it is clear that some assumptions will have to be made. 
 
-You must include at least one figure to illustrate your idea.
+The solution we came up with was to allow a trusted third party, preferably in the form of a trusted hardware module which can be communicated with anonymously and can be sent revotes. A revote is simply maintained as a collection of the old vote and the new vote (including hash, nonce and choice strings). The trusted hardware checks if the old hash exists either in its own memory (which means the old vote itself is also a revote) or in the publicly store public shuffled commitments. If it does, it stores the mapping in its memory. At the end of the election, the trusted party calculates the change in tallies which will occur due to revotes (some votes will decrease and some will increase) and sends this to the smart contract which adds this to its own tally.
+
+Clearly, this model lacks verifiability as the only data made public is the final tally of votes. One thing that can be allowed to slightly mitigate this is that voters can be allowed to query whether a certain mapping exists within the memory of the trusted hardware. If the coercers and the election committee/organizers collude, then this model will fail to provide any security guarantees.
 
 ## Analysis and evaluation
 
-The security analysis of individual components have been given previously. The files [safe_case.py, ...] can be seen to learn how the code runs. Also, the Voter class file and the smart contract solidity file have been well commented.
-
-We analyze the test cases that are given with the code.
-
-[]
-
+The security analysis of individual components have been given previously. The files [safe_case.py, DOS_attack.py, exploit_no_signature_checking.py] can be seen to learn how the code runs. Also, the Voter class file and the smart contract solidity file have been well commented. Security flaws have been identified and shown in the latter 2 files. Trivial edge cases have been identified and sorted out.
 
 ## Related Work
 
+1. [CoinShuffle] (http://crypsys.mmci.uni-saarland.de/projects/CoinShuffle/coinshuffle.pdf)
+ * We use the same concepts utilized in the paper to enable privacy.
+2. [Helios] (https://files.t-square.gatech.edu/access/content/group/XLS0822120636201008.201008/adida.pdf)
+ * Assumes a trusted environment and uses a private server for shuffling so one's vote is private only amongst his peer voters, not from the officials themselves.
+ * Also uses shuffling for privacy of votes and allows voters to inspect votes (after which they will have to revote)
+ * Voters cannot verify the final cast vote
+3. [Bitcongress] (http://www.bitcongress.org/)
+ * Propose a very different system which uses a different blockchain for voting (expensive) and have the concept of one cpu one vote (not very different from one coin one vote). 
+ * Also, privacy is correlated with anonymity of cryptocurrency addresses which can only be justified if a separate blockchain is utilized.
+4. OpenVote Network (Patrick McCorry's system)
+ * Use a very different cryptographic construct (based on El Gamal encryptions) to provide privacy
+ * Their runtime is almost similar in terms of number of rounds and/or user interaction but their final tally construction requires a exponential space search which seemed very inefficient.
+ * Do not consider coercion at all
+5. [Estonia] (https://jhalderm.com/pub/papers/ivoting-ccs14.pdf)
+ * Allow for unlimited online revotes where only final revote is accepted.
+ * Use private election servers
+ * Little verifiability as not all code is open-source and is hosted on government-controlled servers
+ * Security suffers due to election officials having too much power and being reckless (posting videos while typing the root password)
+6. [Follow My Vote] (https://followmyvote.com/)
+ * Also based on Ethereum
+ * Details are not very clear but it seems that voter coercion is not handled and privacy is handled in the weaker case (not private to election organizers)
 
+## SELF EVALUATION
+
+* __What went well?__
+
+I really really enjoyed doing the project (and the course). It was very technically challenging and quite open-ended (in hindsight maybe a bit too open-ended). Also I believe very firmly in the concept due to the benefits of verifiable privacy and transparency and also because with time everything is becoming digital. I never once thought that creating a voting scheme could be so difficult. Some years back I might even have laughed it off and told you to count the maximum votes given to a candidate. But this is really quite a relevant issue and requires some good amount of thought.
+
+
+* __What didn’t go well?__
+
+My timing and scheduling, probably. I spent too much time thinking and doing this solo, often I got lost in thinking about issues like voter coercion, which quite clearly have no simple answer and require some compromise somewhere. I feel that I am still not prepared yet to take up individual research projects. But it’s good that I realize my limitations. Hopefully, I can work on them in the coming semesters. For the project, I feel if I had a good partner, we could have come up with a great implementation.
+
+
+* __Difference from Checkpoint Summary__
+
+Most of the content remained the same as was proposed in the Checkpoint Summary. I have not deviated from the proposal but voter coercion resistance turned out to be quite challenging on its own. Voter rewarding turned out to be pretty trivial although an optimal implementation seems to require more game-theoretic analysis. It felt nice to come up with a rather clean solution for voter privacy on the blockchain (with your help). 
