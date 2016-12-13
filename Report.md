@@ -104,6 +104,8 @@ The solution we came up with was to allow a trusted third party, preferably in t
 
 Clearly, this model lacks verifiability as the only data made public is the final tally of votes. One thing that can be allowed to slightly mitigate this is that voters can be allowed to query whether a certain mapping exists within the memory of the trusted hardware. If the coercers and the election committee/organizers collude, then this model will fail to provide any security guarantees.
 
+![pic.png](https://s27.postimg.org/5xqfc6er7/pic.png)
+
 ## Analysis and evaluation
 
 The security analysis of individual components have been given previously. The files [safe_case.py, DOS_attack.py, exploit_no_signature_checking.py] can be seen to learn how the code runs. Also, the Voter class file and the smart contract solidity file have been well commented. Security flaws have been identified and shown in the latter 2 files. Trivial edge cases have been identified and sorted out.
