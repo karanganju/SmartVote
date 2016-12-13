@@ -26,7 +26,7 @@ __In this project, we specifically aim to solve the following challenges in allo
 * __Privacy__ - Enable some form of verifiable privacy using a decentralized shuffling technique based on Coinshuffle
 * __Voter Incentivization__ - Increase voter turnout using lottery systems
 * __Accountability__ - Reduce the accountability problem in utilizing either of the two approaches 
-* [__Coercion__ - Addres voter coercion by at least enforcing the third solution which despite being the weakest still guarantees some imporovements]
+* __Coercion__ - Address voter coercion by at least enforcing the third solution which despite being the weakest still guarantees some imporovements
 
 ## Protocol description and Security Analysis
 
