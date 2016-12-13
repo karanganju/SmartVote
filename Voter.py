@@ -183,3 +183,90 @@ class Voter:
 			return 1;
 		else:
 			return 0
+
+# Has some tricks up his sleeves 
+class MaliciousVoter(Voter):
+	# Shuffle step for open votes
+	def shuffle_votes(self):
+		round_ciphertext = self.vote.toString()
+		# Encrypt own vote 
+		for i in range(self.hub_id):
+			round_ciphertext = self.key.encrypt(round_ciphertext, Election.keys[(self.hub_num, i)])
+		# Decrypt all received votes
+		self.shuffled_votes = [self.key.decrypt(x) for x in self.shuffled_votes]
+		# Append own vote and shuffle
+		self.shuffled_votes.append(round_ciphertext)
+		Rand.shuffle(self.shuffled_votes)
+		# Send to next voter to shuffle and add his vote or send to the contract if shuffling is complete
+		if (self.hub_id == 0):
+			# Here comes the malice!
+			hub_votes = ""
+			for elem in self.generated_votes:
+				hub_votes += elem + ","
+			self.contract.open_hashes(hub_votes, self.hub_num, sender = self.id)			
+		else:
+			self.send_shuffled_vote(Election.participants[(self.hub_num, self.hub_id - 1)])
+
+	# Shuffle step for commitments
+	def shuffle_hashes(self):
+		round_ciphertext = self.vote.hash
+		# Encrypt own commitment
+		for i in range(self.hub_id):
+			round_ciphertext = self.key.encrypt(round_ciphertext, Election.keys[(self.hub_num, i)])
+		# Decrypt all received commitments
+		self.shuffled_hashes = [self.key.decrypt(x) for x in self.shuffled_hashes]
+		# Append own commitment and shuffle
+		self.shuffled_hashes.append(round_ciphertext)
+		Rand.shuffle(self.shuffled_hashes)
+		# Send to next voter to shuffle and add his commitment or send to the contract if shuffling is complete
+		if (self.hub_id == 0):
+			# Here comes the malice
+			hub_votes = ""
+			for elem in self.generated_hashes:
+				hub_votes += elem + ","
+			self.contract.submit_hashes(hub_votes, self.hub_num, sender = self.id)
+		else:
+			self.send_shuffled_hash(Election.participants[(self.hub_num, self.hub_id - 1)])
+
+	def gen_votes(self, candidate):
+		self.generated_hashes = []
+		self.generated_votes = []
+		i = 0
+		while True:
+			if ((self.hub_num, i) in Election.participants.keys()):
+				new_gen = Vote(generate_nonce(), candidate)
+				self.generated_hashes.append(new_gen.hash)
+				self.generated_votes.append(new_gen.toString())
+				i += 1 
+			else:
+				break
+
+# Has some tricks up his sleeves 
+class DOSser(Voter):
+	# Shuffle step for open votes
+	def shuffle_votes(self):
+		round_ciphertext = self.vote.toString()
+		# Encrypt own vote 
+		for i in range(self.hub_id):
+			round_ciphertext = self.key.encrypt(round_ciphertext, Election.keys[(self.hub_num, i)])
+		# Decrypt all received votes
+		self.shuffled_votes = [self.key.decrypt(x) for x in self.shuffled_votes]
+		# Append own vote and shuffle
+		self.shuffled_votes.append(round_ciphertext)
+		Rand.shuffle(self.shuffled_votes)
+		# Send to next voter to shuffle and add his vote or send to the contract if shuffling is complete
+		if (self.hub_id == 0):
+			# Here comes the malice!
+			vote_cands = [x.split('|')[2] for x in self.shuffled_votes]
+			if (vote_cands.count(max(set(vote_cands), key=vote_cands.count)) >= vote_cands.count(self.candidate)):
+				# DOS NOW
+				return
+			hub_votes = ""
+			for elem in self.shuffled_votes:
+				hub_votes += elem + ","
+			self.contract.open_hashes(hub_votes, self.hub_num, sender = self.id)			
+		else:
+			self.send_shuffled_vote(Election.participants[(self.hub_num, self.hub_id - 1)])
+
+	def set_alliance(self, candidate):
+		self.candidate = candidate
